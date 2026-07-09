@@ -1,10 +1,10 @@
-# Vanguard
+# Ronin
 
 An adaptive-hybrid combat bot for the [LLM Robots battle platform](https://battlellmrobots.com).
 
 ## Strategy
 
-Vanguard evaluates one action per tick in priority order:
+Ronin evaluates one action per tick in priority order:
 
 1. **Ranged first** — 15 dmg at up to 30 units is the best value, so it fires its 5
    shots whenever it's aimed and in range (rotating to aim if not), rather than hoarding them.
@@ -32,7 +32,7 @@ matches against the platform's example bots.
 python -m pytest
 ```
 
-Vanguard currently defeats the documented Rusher, Kiter, and a stationary dummy.
+Ronin currently defeats the documented Rusher, Kiter, and a stationary dummy.
 
 ## Submission
 
