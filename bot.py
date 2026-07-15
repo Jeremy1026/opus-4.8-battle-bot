@@ -3,6 +3,8 @@ import math
 CONE = 0.9239          # cos(22.5 deg) — attack cone half-angle
 MELEE_R = 5.0
 RANGED_R = 30.0
+DEFEND_TICKS = 20      # open defensively, then switch to attack mode
+SAFE_R = 12.0          # keep opponent outside this band while defending
 
 
 def _unit(dx, dy):
@@ -31,6 +33,24 @@ def decide(state, memory):
         "opp": [state["opponent_position"]["x"], state["opponent_position"]["y"]],
     }
 
+    # Phase 1 (opening): prioritize defense. Take only the free, zero-risk
+    # ranged shots; otherwise soak/avoid melee rather than trade blows.
+    if state.get("tick", DEFEND_TICKS) < DEFEND_TICKS:
+        # Free ranged damage from a safe distance — no reason to skip it.
+        if uses > 0 and cd == 0 and dist <= RANGED_R and aimed:
+            return {"type": "attack_ranged"}, new_mem
+        # Under threat up close: halve the hit instead of trading melee.
+        if dist <= MELEE_R or (took_damage and hp <= opp_hp):
+            return {"type": "defend"}, new_mem
+        # Opponent crowding us: back off to keep our distance advantage.
+        if dist < SAFE_R:
+            ux, uy = _unit(ox, oy)
+            step = min(SAFE_R - dist, 5.0)
+            return {"type": "move", "dx": -ux * step, "dy": -uy * step}, new_mem
+        # Otherwise stay aimed so we're ready to fire / transition to attack.
+        return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
+
+    # Phase 2 (attack mode) ------------------------------------------------
     # 1. Ranged: best damage per hit; use whenever aimed and in range.
     if uses > 0 and cd == 0 and dist <= RANGED_R:
         if aimed:

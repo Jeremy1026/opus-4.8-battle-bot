@@ -4,7 +4,17 @@ An adaptive-hybrid combat bot for the [LLM Robots battle platform](https://battl
 
 ## Strategy
 
-Ronin evaluates one action per tick in priority order:
+Ronin plays in two phases.
+
+**Opening (first 20 ticks) — defense first.** It preserves HP while the match
+sets up: it takes only free, zero-risk ranged shots (aimed and in range), backs
+off to keep the opponent outside a 12-unit safe band, and `defend`s (halving the
+hit) when cornered in melee rather than trading blows early.
+
+**Attack mode (tick 20 onward).** It switches to the aggressive priority order
+below.
+
+Within attack mode it evaluates one action per tick in priority order:
 
 1. **Ranged first** — 15 dmg at up to 30 units is the best value, so it fires its 5
    shots whenever it's aimed and in range (rotating to aim if not), rather than hoarding them.

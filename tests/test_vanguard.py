@@ -21,16 +21,49 @@ def test_fires_ranged_when_aimed_and_available():
 
 
 def test_melee_when_adjacent_and_aimed_no_ranged():
-    s = _state(opponent_position={"x": 53.0, "y": 50.0},
+    s = _state(tick=20, opponent_position={"x": 53.0, "y": 50.0},
                ranged_uses_remaining=0, ranged_cooldown_remaining=0)
     act, _ = bot.decide(s, {})
     assert act["type"] == "attack_melee"
 
 
 def test_rotates_when_off_aim():
-    s = _state(own_facing={"dx": 0.0, "dy": 1.0})  # facing away
+    s = _state(tick=20, own_facing={"dx": 0.0, "dy": 1.0})  # facing away
     act, _ = bot.decide(s, {})
     assert act["type"] == "rotate"
+
+
+def test_defensive_phase_defends_when_adjacent():
+    # Early game, opponent in melee range with no free ranged shot available:
+    # halve the hit instead of trading melee.
+    s = _state(tick=0, opponent_position={"x": 53.0, "y": 50.0},
+               ranged_uses_remaining=0)
+    act, _ = bot.decide(s, {})
+    assert act["type"] == "defend"
+
+
+def test_defensive_phase_backs_off_when_crowded():
+    # Early game, opponent inside the safe band but not adjacent: retreat.
+    s = _state(tick=5, opponent_position={"x": 58.0, "y": 50.0},
+               own_facing={"dx": 0.0, "dy": 1.0})
+    act, _ = bot.decide(s, {})
+    assert act["type"] == "move"
+    assert act["dx"] < 0  # moving away from opponent (who is to our +x)
+
+
+def test_defensive_phase_still_takes_free_ranged_shot():
+    # Even while defending early, a safe aimed ranged shot is worth taking.
+    s = _state(tick=0, opponent_position={"x": 70.0, "y": 50.0})
+    act, _ = bot.decide(s, {})
+    assert act["type"] == "attack_ranged"
+
+
+def test_switches_to_attack_mode_after_defend_ticks():
+    # Past the defensive window, adjacent + aimed should attack, not defend.
+    s = _state(tick=20, opponent_position={"x": 53.0, "y": 50.0},
+               ranged_uses_remaining=0)
+    act, _ = bot.decide(s, {})
+    assert act["type"] == "attack_melee"
 
 
 def test_moves_closer_when_out_of_range():
