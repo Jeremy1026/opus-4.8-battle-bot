@@ -4,7 +4,6 @@ CONE = 0.9239          # cos(22.5 deg) — attack cone half-angle
 MELEE_R = 5.0
 RANGED_R = 30.0
 DEFEND_TICKS = 20      # open defensively, then switch to attack mode
-SAFE_R = 12.0          # keep opponent outside this band while defending
 
 
 def _unit(dx, dy):
@@ -13,53 +12,51 @@ def _unit(dx, dy):
 
 
 def decide(state, memory):
-    ox = state["opponent_position"]["x"] - state["own_position"]["x"]
-    oy = state["opponent_position"]["y"] - state["own_position"]["y"]
+    # Guard every access: a KeyError here would forfeit the tick on the platform.
+    own = state.get("own_position", {})
+    opp = state.get("opponent_position", {})
+    face = state.get("own_facing", {})
+    ox = opp.get("x", 0.0) - own.get("x", 0.0)
+    oy = opp.get("y", 0.0) - own.get("y", 0.0)
     dist = math.hypot(ox, oy)
-    fx, fy = state["own_facing"]["dx"], state["own_facing"]["dy"]
+    fx, fy = face.get("dx", 1.0), face.get("dy", 0.0)
     fl = math.hypot(fx, fy) or 1.0
     aim = (fx * ox + fy * oy) / (fl * dist) if dist else 1.0
     aimed = aim >= CONE
 
-    hp = state["own_hp"]
-    opp_hp = state["opponent_hp"]
-    cd = state["ranged_cooldown_remaining"]
-    uses = state["ranged_uses_remaining"]
+    hp = state.get("own_hp", 100)
+    opp_hp = state.get("opponent_hp", 100)
+    cd = state.get("ranged_cooldown_remaining", 0)
+    uses = state.get("ranged_uses_remaining", 0)
 
-    prev_hp = memory.get("hp", hp)
-    took_damage = hp < prev_hp
-    # Count ticks ourselves so the phase logic never depends on the platform
-    # sending a "tick" field (fall back to it only if our counter is missing).
+    if not isinstance(memory, dict):
+        memory = {}
     tick = memory.get("tick", state.get("tick", 0))
-    new_mem = {
-        "hp": hp,
-        "opp": [state["opponent_position"]["x"], state["opponent_position"]["y"]],
-        "tick": tick + 1,
-    }
+    new_mem = {"hp": hp, "tick": tick + 1}
 
-    # Phase 1 (opening): prioritize defense while still making real progress.
-    # Take free ranged shots, keep a safe gap, defend in melee — but always
-    # return a concrete action (never spin in place) so the bot keeps moving.
+    # Phase 1 (opening): defensive posture. `defend` is near-useless here (it
+    # only helps when facing away from the attacker), and equal move speeds mean
+    # we can't out-run anyone — so the real defense is to stay at range, keep the
+    # opponent aimed, and chip with free ranged shots without diving into melee.
     if tick < DEFEND_TICKS:
-        # Free ranged damage from a safe distance — no reason to skip it.
-        if uses > 0 and cd == 0 and dist <= RANGED_R and aimed:
+        # Free 15-damage ranged shot when aimed and in range — always worth it.
+        if aimed and uses > 0 and cd == 0 and dist <= RANGED_R:
             return {"type": "attack_ranged"}, new_mem
-        # Under threat up close: halve the hit instead of trading melee.
-        if dist <= MELEE_R or (took_damage and hp <= opp_hp):
-            return {"type": "defend"}, new_mem
-        # Opponent crowding us: back off to keep our distance advantage.
-        if dist < SAFE_R:
-            ux, uy = _unit(ox, oy)
-            step = min(SAFE_R - dist, 5.0)
-            return {"type": "move", "dx": -ux * step, "dy": -uy * step}, new_mem
-        # Too far to threaten: close into ranged range (rotate first if off-aim).
+        # Forced into melee: fight back rather than get pounded passively.
+        if dist <= MELEE_R:
+            return ({"type": "attack_melee"} if aimed
+                    else {"type": "rotate", "dx": ox, "dy": oy}), new_mem
+        # Not aimed: turn toward the opponent so we can fire / track next tick.
         if not aimed:
             return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
+        # Out of ranged range: edge in until we can shoot (kite toward open
+        # space if the opponent is running, so we don't wall-trap ourselves).
         if dist > RANGED_R:
             ux, uy = _unit(ox, oy)
             step = min(dist - RANGED_R + 1.0, 5.0)
             return {"type": "move", "dx": ux * step, "dy": uy * step}, new_mem
-        # Aimed and within ranged band but on cooldown: hold position, stay aimed.
+        # In range, aimed, shot on cooldown: keep facing the opponent so the next
+        # shot lands the instant the cooldown clears (rotating tracks them for free).
         return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
 
     # Phase 2 (attack mode) ------------------------------------------------
@@ -73,9 +70,6 @@ def decide(state, memory):
     if dist <= MELEE_R:
         if aimed:
             return {"type": "attack_melee"}, new_mem
-        # Off-aim and adjacent: if we're being hit and not winning, defend.
-        if took_damage and hp <= opp_hp:
-            return {"type": "defend"}, new_mem
         return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
 
     # 3. Close distance. Rotate first if badly off-aim so we can act next tick.

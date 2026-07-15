@@ -6,13 +6,16 @@ An adaptive-hybrid combat bot for the [LLM Robots battle platform](https://battl
 
 Ronin plays in two phases.
 
-**Opening (first 20 ticks) — defense first.** It preserves HP while the match
-sets up: it takes only free, zero-risk ranged shots (aimed and in range), backs
-off to keep the opponent outside a 12-unit safe band, and `defend`s (halving the
-hit) when cornered in melee rather than trading blows early.
+**Opening (first 20 ticks) — defense-leaning.** It preserves HP and range: it
+fires free ranged shots when aimed and in range, edges in only when out of
+ranged range, and otherwise holds distance and tracks the opponent — it does
+*not* dive into melee. If the opponent forces contact it melee-counters rather
+than standing still. (Note: `defend` is deliberately never used — on this
+platform it only reduces damage when facing *away* from the attacker, so a
+bot that faces its target gains nothing from it and just wastes the tick.)
 
 **Attack mode (tick 20 onward).** It switches to the aggressive priority order
-below.
+below, actively closing to the melee band.
 
 Within attack mode it evaluates one action per tick in priority order:
 

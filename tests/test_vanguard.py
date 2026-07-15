@@ -16,7 +16,8 @@ def _state(**kw):
 
 
 def test_fires_ranged_when_aimed_and_available():
-    act, _ = bot.decide(_state(), {})
+    # Attack mode (past the opening): aimed + shot ready -> fire.
+    act, _ = bot.decide(_state(tick=20), {})
     assert act["type"] == "attack_ranged"
 
 
@@ -33,29 +34,38 @@ def test_rotates_when_off_aim():
     assert act["type"] == "rotate"
 
 
-def test_defensive_phase_defends_when_adjacent():
-    # Early game, opponent in melee range with no free ranged shot available:
-    # halve the hit instead of trading melee.
-    s = _state(tick=0, opponent_position={"x": 53.0, "y": 50.0},
+def test_defensive_phase_melee_counters_when_forced():
+    # Early game, opponent in melee range with no ranged shot left: fight back
+    # (melee) rather than stand still — `defend` is useless facing the attacker.
+    s = _state(tick=5, opponent_position={"x": 53.0, "y": 50.0},
                ranged_uses_remaining=0)
     act, _ = bot.decide(s, {})
-    assert act["type"] == "defend"
+    assert act["type"] == "attack_melee"
 
 
-def test_defensive_phase_backs_off_when_crowded():
-    # Early game, opponent inside the safe band but not adjacent: retreat.
-    s = _state(tick=5, opponent_position={"x": 58.0, "y": 50.0},
-               own_facing={"dx": 0.0, "dy": 1.0})
-    act, _ = bot.decide(s, {})
-    assert act["type"] == "move"
-    assert act["dx"] < 0  # moving away from opponent (who is to our +x)
+def test_defensive_phase_never_defends():
+    # The opening must never issue a stationary, ineffective `defend`.
+    for pos in ({"x": 53.0, "y": 50.0}, {"x": 58.0, "y": 50.0}):
+        s = _state(tick=0, opponent_position=pos, ranged_uses_remaining=0)
+        act, _ = bot.decide(s, {})
+        assert act["type"] != "defend"
 
 
-def test_defensive_phase_still_takes_free_ranged_shot():
-    # Even while defending early, a safe aimed ranged shot is worth taking.
+def test_defensive_phase_takes_free_ranged_shot_in_range():
+    # Aimed, in ranged range, shot ready: take the free chip damage.
     s = _state(tick=0, opponent_position={"x": 70.0, "y": 50.0})
     act, _ = bot.decide(s, {})
     assert act["type"] == "attack_ranged"
+
+
+def test_never_stalls_from_far_start():
+    # From a distant start (out of ranged range) the very first action must
+    # make progress, not spin in place forever.
+    s = _state(tick=0, own_position={"x": 25.0, "y": 50.0},
+               opponent_position={"x": 75.0, "y": 50.0})
+    act, mem = bot.decide(s, {})
+    assert act["type"] in ("move", "rotate", "attack_ranged")
+    assert mem["tick"] == 1
 
 
 def test_switches_to_attack_mode_after_defend_ticks():

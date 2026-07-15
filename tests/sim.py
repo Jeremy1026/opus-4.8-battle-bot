@@ -46,10 +46,17 @@ def run_match(decide_a, decide_b, max_ticks=500):
                 if bots[me]["errors"] >= MAX_ERRORS:
                     return {"winner": other, "hp_a": bots["a"]["hp"],
                             "hp_b": bots["b"]["hp"], "ticks": tick}
-        for k in bots:
-            bots[k]["defending"] = actions[k].get("type") == "defend"
-            if bots[k]["cd"] > 0:
-                bots[k]["cd"] -= 1
+        for me, other in (("a", "b"), ("b", "a")):
+            # defend only reduces damage if facing AWAY from the attacker,
+            # i.e. the attacker is NOT within the facing cone (per platform docs).
+            if actions[me].get("type") == "defend":
+                m, o = bots[me], bots[other]
+                tx, ty = o["pos"][0] - m["pos"][0], o["pos"][1] - m["pos"][1]
+                bots[me]["defending"] = not _aimed(m["face"][0], m["face"][1], tx, ty)
+            else:
+                bots[me]["defending"] = False
+            if bots[me]["cd"] > 0:
+                bots[me]["cd"] -= 1
         for me, other in (("a", "b"), ("b", "a")):
             _apply(bots[me], bots[other], actions[me])
         if bots["a"]["hp"] <= 0 or bots["b"]["hp"] <= 0:
