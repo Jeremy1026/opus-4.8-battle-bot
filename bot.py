@@ -28,14 +28,19 @@ def decide(state, memory):
 
     prev_hp = memory.get("hp", hp)
     took_damage = hp < prev_hp
+    # Count ticks ourselves so the phase logic never depends on the platform
+    # sending a "tick" field (fall back to it only if our counter is missing).
+    tick = memory.get("tick", state.get("tick", 0))
     new_mem = {
         "hp": hp,
         "opp": [state["opponent_position"]["x"], state["opponent_position"]["y"]],
+        "tick": tick + 1,
     }
 
-    # Phase 1 (opening): prioritize defense. Take only the free, zero-risk
-    # ranged shots; otherwise soak/avoid melee rather than trade blows.
-    if state.get("tick", DEFEND_TICKS) < DEFEND_TICKS:
+    # Phase 1 (opening): prioritize defense while still making real progress.
+    # Take free ranged shots, keep a safe gap, defend in melee — but always
+    # return a concrete action (never spin in place) so the bot keeps moving.
+    if tick < DEFEND_TICKS:
         # Free ranged damage from a safe distance — no reason to skip it.
         if uses > 0 and cd == 0 and dist <= RANGED_R and aimed:
             return {"type": "attack_ranged"}, new_mem
@@ -47,7 +52,14 @@ def decide(state, memory):
             ux, uy = _unit(ox, oy)
             step = min(SAFE_R - dist, 5.0)
             return {"type": "move", "dx": -ux * step, "dy": -uy * step}, new_mem
-        # Otherwise stay aimed so we're ready to fire / transition to attack.
+        # Too far to threaten: close into ranged range (rotate first if off-aim).
+        if not aimed:
+            return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
+        if dist > RANGED_R:
+            ux, uy = _unit(ox, oy)
+            step = min(dist - RANGED_R + 1.0, 5.0)
+            return {"type": "move", "dx": ux * step, "dy": uy * step}, new_mem
+        # Aimed and within ranged band but on cooldown: hold position, stay aimed.
         return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
 
     # Phase 2 (attack mode) ------------------------------------------------
