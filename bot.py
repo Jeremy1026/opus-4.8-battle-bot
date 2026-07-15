@@ -4,6 +4,8 @@ CONE = 0.9239          # cos(22.5 deg) — attack cone half-angle
 MELEE_R = 5.0
 RANGED_R = 30.0
 DEFEND_TICKS = 20      # open defensively, then switch to attack mode
+TURN_BACK_TICKS = 3    # cooldown needed to justify turning away and back (180 deg = 2 ticks)
+TURTLE_MIN_R = 10.0    # never turn our back on an opponent closer than this
 
 
 def _unit(dx, dy):
@@ -23,6 +25,9 @@ def decide(state, memory):
     fl = math.hypot(fx, fy) or 1.0
     aim = (fx * ox + fy * oy) / (fl * dist) if dist else 1.0
     aimed = aim >= CONE
+    # `defend` only reduces damage when the attacker is within the +/-22.5 cone
+    # BEHIND us, so it takes a deliberate turn-away to make it do anything.
+    facing_away = aim <= -CONE
 
     hp = state.get("own_hp", 100)
     opp_hp = state.get("opponent_hp", 100)
@@ -32,31 +37,42 @@ def decide(state, memory):
     if not isinstance(memory, dict):
         memory = {}
     tick = memory.get("tick", state.get("tick", 0))
-    new_mem = {"hp": hp, "tick": tick + 1}
+    # Is the opponent closing on us? Turning our back on a bot that's charging in
+    # is suicide; turning it on one that's holding range is how defend pays off.
+    prev_dist = memory.get("dist", dist)
+    closing = dist < prev_dist - 0.5
+    new_mem = {"hp": hp, "tick": tick + 1, "dist": dist}
 
-    # Phase 1 (opening): defensive posture. `defend` is near-useless here (it
-    # only helps when facing away from the attacker), and equal move speeds mean
-    # we can't out-run anyone — so the real defense is to stay at range, keep the
-    # opponent aimed, and chip with free ranged shots without diving into melee.
+    # Phase 1 (opening): defensive posture. Prefer range, don't dive into melee,
+    # and turtle (turn away + defend) only in the window where we genuinely
+    # cannot retaliate — otherwise hitting back beats halving a hit.
     if tick < DEFEND_TICKS:
         # Free 15-damage ranged shot when aimed and in range — always worth it.
         if aimed and uses > 0 and cd == 0 and dist <= RANGED_R:
             return {"type": "attack_ranged"}, new_mem
-        # Forced into melee: fight back rather than get pounded passively.
+        # Forced into melee: trade back (10 dmg) rather than turn our back on a
+        # melee attacker, which would let it pound us for free.
         if dist <= MELEE_R:
             return ({"type": "attack_melee"} if aimed
                     else {"type": "rotate", "dx": ox, "dy": oy}), new_mem
+        # Ranged threat we can't answer (shot spent or on a long cooldown) from an
+        # opponent holding its distance: turn our back to it and defend, halving
+        # the incoming 15s. Requires enough cooldown left to turn back around
+        # (180 deg = 2 ticks), and never against someone closing for melee.
+        if (dist <= RANGED_R and dist > TURTLE_MIN_R and not closing
+                and (uses == 0 or cd > TURN_BACK_TICKS)):
+            if facing_away:
+                return {"type": "defend"}, new_mem
+            return {"type": "rotate", "dx": -ox, "dy": -oy}, new_mem
         # Not aimed: turn toward the opponent so we can fire / track next tick.
         if not aimed:
             return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
-        # Out of ranged range: edge in until we can shoot (kite toward open
-        # space if the opponent is running, so we don't wall-trap ourselves).
+        # Out of ranged range: edge in until we can shoot.
         if dist > RANGED_R:
             ux, uy = _unit(ox, oy)
             step = min(dist - RANGED_R + 1.0, 5.0)
             return {"type": "move", "dx": ux * step, "dy": uy * step}, new_mem
-        # In range, aimed, shot on cooldown: keep facing the opponent so the next
-        # shot lands the instant the cooldown clears (rotating tracks them for free).
+        # In range, aimed, shot nearly ready: hold aim so it lands on cooldown end.
         return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
 
     # Phase 2 (attack mode) ------------------------------------------------

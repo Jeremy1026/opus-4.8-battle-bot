@@ -43,11 +43,40 @@ def test_defensive_phase_melee_counters_when_forced():
     assert act["type"] == "attack_melee"
 
 
-def test_defensive_phase_never_defends():
-    # The opening must never issue a stationary, ineffective `defend`.
-    for pos in ({"x": 53.0, "y": 50.0}, {"x": 58.0, "y": 50.0}):
-        s = _state(tick=0, opponent_position=pos, ranged_uses_remaining=0)
-        act, _ = bot.decide(s, {})
+def test_turns_away_from_unanswerable_ranged_threat():
+    # Opening, opponent holding range, our ranged spent: turn our back so that
+    # `defend` will actually reduce damage next tick.
+    s = _state(tick=5, opponent_position={"x": 70.0, "y": 50.0},
+               ranged_uses_remaining=0)
+    act, _ = bot.decide(s, {"tick": 5, "dist": 20.0})  # not closing
+    assert act["type"] == "rotate"
+    assert act["dx"] < 0  # turning away from opponent (who is to our +x)
+
+
+def test_defends_once_facing_away():
+    # Same situation, but already facing away -> the defend now actually applies.
+    s = _state(tick=5, opponent_position={"x": 70.0, "y": 50.0},
+               own_facing={"dx": -1.0, "dy": 0.0}, ranged_uses_remaining=0)
+    act, _ = bot.decide(s, {"tick": 5, "dist": 20.0})
+    assert act["type"] == "defend"
+
+
+def test_never_turns_back_on_a_closing_opponent():
+    # Opponent charging in (distance shrinking): turning away would let them
+    # pound us for free, so we must not turtle.
+    s = _state(tick=5, opponent_position={"x": 70.0, "y": 50.0},
+               ranged_uses_remaining=0)
+    act, _ = bot.decide(s, {"tick": 5, "dist": 30.0})  # closing 30 -> 20
+    assert act["type"] != "defend"
+    assert not (act["type"] == "rotate" and act["dx"] < 0)
+
+
+def test_never_defends_in_melee():
+    # Facing away from an adjacent melee attacker is suicide — trade instead.
+    for mem in ({"tick": 0, "dist": 3.0}, {"tick": 0, "dist": 30.0}):
+        s = _state(tick=0, opponent_position={"x": 53.0, "y": 50.0},
+                   ranged_uses_remaining=0)
+        act, _ = bot.decide(s, mem)
         assert act["type"] != "defend"
 
 

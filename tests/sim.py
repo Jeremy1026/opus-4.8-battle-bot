@@ -23,6 +23,15 @@ def _aimed(fx, fy, tx, ty):
     return (fx * tx + fy * ty) / d >= CONE
 
 
+def _facing_away(fx, fy, tx, ty):
+    """True when the attacker sits within the +/-22.5 cone directly BEHIND us —
+    the condition under which `defend` actually reduces damage."""
+    d = math.hypot(tx, ty)
+    if d == 0:
+        return False
+    return (fx * tx + fy * ty) / d <= -CONE
+
+
 def run_match(decide_a, decide_b, max_ticks=500):
     bots = {
         "a": {"pos": [25.0, 50.0], "hp": 100, "face": [1.0, 0.0],
@@ -47,12 +56,12 @@ def run_match(decide_a, decide_b, max_ticks=500):
                     return {"winner": other, "hp_a": bots["a"]["hp"],
                             "hp_b": bots["b"]["hp"], "ticks": tick}
         for me, other in (("a", "b"), ("b", "a")):
-            # defend only reduces damage if facing AWAY from the attacker,
-            # i.e. the attacker is NOT within the facing cone (per platform docs).
+            # defend only reduces damage if facing AWAY from the attacker, i.e.
+            # the attacker is within the +/-22.5 cone behind us (per platform docs).
             if actions[me].get("type") == "defend":
                 m, o = bots[me], bots[other]
                 tx, ty = o["pos"][0] - m["pos"][0], o["pos"][1] - m["pos"][1]
-                bots[me]["defending"] = not _aimed(m["face"][0], m["face"][1], tx, ty)
+                bots[me]["defending"] = _facing_away(m["face"][0], m["face"][1], tx, ty)
             else:
                 bots[me]["defending"] = False
             if bots[me]["cd"] > 0:

@@ -10,9 +10,18 @@ Ronin plays in two phases.
 fires free ranged shots when aimed and in range, edges in only when out of
 ranged range, and otherwise holds distance and tracks the opponent — it does
 *not* dive into melee. If the opponent forces contact it melee-counters rather
-than standing still. (Note: `defend` is deliberately never used — on this
-platform it only reduces damage when facing *away* from the attacker, so a
-bot that faces its target gains nothing from it and just wastes the tick.)
+than standing still.
+
+`defend` only halves damage when the attacker is within the ±22.5° cone
+*behind* you, so using it takes a deliberate turn-away. Ronin turtles
+(rotate away, then `defend`) only when both hold:
+
+- the opponent is a ranged threat it **can't answer** (shots spent, or a
+  cooldown long enough to turn back around — 180° takes 2 ticks), and
+- the opponent is **holding its distance**, not closing.
+
+Against anyone charging in — or already in melee — it never turns its back;
+it trades melee instead, since hitting back for 10 beats halving a hit.
 
 **Attack mode (tick 20 onward).** It switches to the aggressive priority order
 below, actively closing to the melee band.
