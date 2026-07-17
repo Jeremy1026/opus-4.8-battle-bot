@@ -21,11 +21,22 @@ def test_fires_ranged_when_aimed_and_available():
     assert act["type"] == "attack_ranged"
 
 
-def test_melee_when_adjacent_and_aimed_no_ranged():
+def test_melee_strikes_when_opponent_not_aimed():
+    # Adjacent, we're aimed, opponent facing away (can't answer): free hit.
     s = _state(tick=20, opponent_position={"x": 53.0, "y": 50.0},
+               opponent_facing={"dx": 1.0, "dy": 0.0},  # facing away from us
                ranged_uses_remaining=0, ranged_cooldown_remaining=0)
     act, _ = bot.decide(s, {})
     assert act["type"] == "attack_melee"
+
+
+def test_melee_dodges_when_opponent_aimed():
+    # Adjacent, opponent aimed at us: sidestep out of its cone instead of trading.
+    s = _state(tick=20, opponent_position={"x": 53.0, "y": 50.0},
+               opponent_facing={"dx": -1.0, "dy": 0.0},  # facing toward us
+               ranged_uses_remaining=0, ranged_cooldown_remaining=0)
+    act, _ = bot.decide(s, {})
+    assert act["type"] == "move"
 
 
 def test_rotates_when_off_aim():
@@ -34,13 +45,16 @@ def test_rotates_when_off_aim():
     assert act["type"] == "rotate"
 
 
-def test_defensive_phase_melee_counters_when_forced():
-    # Early game, opponent in melee range with no ranged shot left: fight back
-    # (melee) rather than stand still — `defend` is useless facing the attacker.
-    s = _state(tick=5, opponent_position={"x": 53.0, "y": 50.0},
-               ranged_uses_remaining=0)
-    act, _ = bot.decide(s, {})
-    assert act["type"] == "attack_melee"
+def test_defensive_phase_melee_flank_when_forced():
+    # Early game, dragged into melee: flank-dodge, never `defend` (useless facing
+    # the attacker). Strike when they can't answer, sidestep when they're aimed.
+    s_hit = _state(tick=5, opponent_position={"x": 53.0, "y": 50.0},
+                   opponent_facing={"dx": 1.0, "dy": 0.0}, ranged_uses_remaining=0)
+    assert bot.decide(s_hit, {})[0]["type"] == "attack_melee"
+    s_dodge = _state(tick=5, opponent_position={"x": 53.0, "y": 50.0},
+                     opponent_facing={"dx": -1.0, "dy": 0.0}, ranged_uses_remaining=0)
+    act = bot.decide(s_dodge, {})[0]
+    assert act["type"] == "move"
 
 
 def test_turns_away_from_unanswerable_ranged_threat():
@@ -98,9 +112,9 @@ def test_never_stalls_from_far_start():
 
 
 def test_switches_to_attack_mode_after_defend_ticks():
-    # Past the defensive window, adjacent + aimed should attack, not defend.
+    # Past the defensive window, adjacent + aimed + opponent can't answer -> strike.
     s = _state(tick=20, opponent_position={"x": 53.0, "y": 50.0},
-               ranged_uses_remaining=0)
+               opponent_facing={"dx": 1.0, "dy": 0.0}, ranged_uses_remaining=0)
     act, _ = bot.decide(s, {})
     assert act["type"] == "attack_melee"
 

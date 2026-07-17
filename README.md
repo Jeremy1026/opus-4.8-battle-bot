@@ -20,8 +20,23 @@ than standing still.
   cooldown long enough to turn back around — 180° takes 2 ticks), and
 - the opponent is **holding its distance**, not closing.
 
-Against anyone charging in — or already in melee — it never turns its back;
-it trades melee instead, since hitting back for 10 beats halving a hit.
+Against anyone charging in it never turns its back. In melee it uses a
+**flank-dodge** (see below) rather than turning away.
+
+### Melee flank-dodge
+
+Trading blows one-for-one against a mirror only ever draws. Instead, whenever
+Ronin is in the melee band it reads the opponent's facing:
+
+- **Opponent aimed at us** → sidestep perpendicular, out of its ±22.5° cone, so
+  its strike misses. (A 5-unit step keeps us inside our own melee range.)
+- **Opponent *not* aimed at us** (mid-rotation, facing away) → strike for a hit
+  it can't answer.
+
+This makes Ronin take little or no melee damage from aggressive rushers while
+still chipping them down with ranged fire. Note it can't help in a pure ranged
+duel: at 30 units a single sidestep only shifts ~9.5°, far short of the ±22.5°
+cone, so long-range shots are undodgeable and trade evenly.
 
 **Attack mode (tick 20 onward).** It switches to the aggressive priority order
 below, actively closing to the melee band.
@@ -30,10 +45,9 @@ Within attack mode it evaluates one action per tick in priority order:
 
 1. **Ranged first** — 15 dmg at up to 30 units is the best value, so it fires its 5
    shots whenever it's aimed and in range (rotating to aim if not), rather than hoarding them.
-2. **Melee** — once inside 5 units it strikes for 10 dmg when aimed, rotating to aim otherwise.
-3. **Defend** — when adjacent, off-aim, actively taking damage, and not ahead on HP,
-   it halves the incoming hit instead of trading blows it would lose.
-4. **Position** — otherwise it closes to the melee band, rotating first when badly off-aim
+2. **Melee** — once inside 5 units it uses the flank-dodge above: strike when the
+   opponent can't answer, sidestep out of its cone when it's aimed at us.
+3. **Position** — otherwise it closes to the melee band, rotating first when badly off-aim
    so it can act on the following tick.
 
 Facing only changes via `rotate` (max 90°/tick), and attacks only land within a ±22.5°

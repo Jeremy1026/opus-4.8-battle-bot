@@ -13,6 +13,21 @@ def _unit(dx, dy):
     return (dx / d, dy / d) if d else (1.0, 0.0)
 
 
+def _melee(ox, oy, aimed, opp_aimed):
+    """Melee with a flank-dodge: strike when we're aimed and the opponent is not
+    (a hit they can't answer), sidestep out of their cone when they're aimed at
+    us (dodging their strike), and rotate to re-aim otherwise. Sidestepping
+    perpendicular keeps us in the melee band while denying the opponent its hit."""
+    if aimed and not opp_aimed:
+        return {"type": "attack_melee"}
+    if opp_aimed:
+        px, py = _unit(-oy, ox)                     # perpendicular: circle their flank
+        return {"type": "move", "dx": px * 5.0, "dy": py * 5.0}
+    if aimed:
+        return {"type": "attack_melee"}
+    return {"type": "rotate", "dx": ox, "dy": oy}
+
+
 def decide(state, memory):
     # Guard every access: a KeyError here would forfeit the tick on the platform.
     own = state.get("own_position", {})
@@ -28,6 +43,13 @@ def decide(state, memory):
     # `defend` only reduces damage when the attacker is within the +/-22.5 cone
     # BEHIND us, so it takes a deliberate turn-away to make it do anything.
     facing_away = aim <= -CONE
+
+    # Is the opponent currently aimed at us? (Only a threat when it's aimed.)
+    ofx, ofy = state.get("opponent_facing", {}).get("dx", 0.0), \
+        state.get("opponent_facing", {}).get("dy", 0.0)
+    ofl = math.hypot(ofx, ofy) or 1.0
+    opp_aim = (ofx * -ox + ofy * -oy) / (ofl * dist) if dist else 1.0
+    opp_aimed = opp_aim >= CONE
 
     hp = state.get("own_hp", 100)
     opp_hp = state.get("opponent_hp", 100)
@@ -50,11 +72,10 @@ def decide(state, memory):
         # Free 15-damage ranged shot when aimed and in range — always worth it.
         if aimed and uses > 0 and cd == 0 and dist <= RANGED_R:
             return {"type": "attack_ranged"}, new_mem
-        # Forced into melee: trade back (10 dmg) rather than turn our back on a
-        # melee attacker, which would let it pound us for free.
-        if dist <= MELEE_R:
-            return ({"type": "attack_melee"} if aimed
-                    else {"type": "rotate", "dx": ox, "dy": oy}), new_mem
+        # Forced into melee: flank-dodge — hit when they can't answer, sidestep
+        # their strike otherwise, rather than trading blows one-for-one.
+        if dist <= MELEE_R + 0.5:
+            return _melee(ox, oy, aimed, opp_aimed), new_mem
         # Ranged threat we can't answer (shot spent or on a long cooldown) from an
         # opponent holding its distance: turn our back to it and defend, halving
         # the incoming 15s. Requires enough cooldown left to turn back around
@@ -82,11 +103,9 @@ def decide(state, memory):
             return {"type": "attack_ranged"}, new_mem
         return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
 
-    # 2. Melee when adjacent.
-    if dist <= MELEE_R:
-        if aimed:
-            return {"type": "attack_melee"}, new_mem
-        return {"type": "rotate", "dx": ox, "dy": oy}, new_mem
+    # 2. Melee when adjacent — flank-dodge to win the exchange, not just trade.
+    if dist <= MELEE_R + 0.5:
+        return _melee(ox, oy, aimed, opp_aimed), new_mem
 
     # 3. Close distance. Rotate first if badly off-aim so we can act next tick.
     if not aimed:
